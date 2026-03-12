@@ -1,4 +1,4 @@
-# Shared Bank Tracker
+# Yen Tracking App Lite
 
 A mobile-first Progressive Web App (PWA) for tracking shared spending across a group — built for travel, with offline support, live JPY↔USD conversion, and no account required.
 
