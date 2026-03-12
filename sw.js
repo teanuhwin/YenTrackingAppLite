@@ -1,7 +1,7 @@
 // sw.js — Yen Tracker Service Worker
 // Bump this version string any time you update the app,
 // so the old cache gets replaced automatically.
-const CACHE_NAME = 'yen-tracker-v1';
+const CACHE_NAME = 'yen-tracker-v2';
 
 // Everything the app needs to run with zero network access.
 // External CDN assets (Tailwind, Google Fonts) are also cached
