@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Shared Withdrawal Tracker</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            background: #f0f2f5;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+        /* Prevents iOS auto-zoom on input focus */
+        input, select, textarea { font-size: 16px !important; }
+
+        .card {
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+        }
+
+        /* Tab bar */
+        .tab-btn { transition: color 0.2s; }
+        .tab-btn.active { color: #1d4ed8; }
+        .tab-indicator {
+            position: absolute;
+            bottom: 0;
+            height: 2.5px;
+            background: #1d4ed8;
+            border-radius: 2px;
+            transition: left 0.25s cubic-bezier(0.4,0,0.2,1), width 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Rate badge pulse */
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .live-dot { animation: pulse-dot 2s infinite; }
+
+        /* Transaction cards on mobile */
+        .tx-card {
+            border-bottom: 1px solid #f0f2f5;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .tx-card:last-child { border-bottom: none; }
+
+        /* Summary cards */
+        .summary-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        /* Buttons */
+        .btn-primary {
+            background: #111827;
+            color: #fff;
+            border-radius: 12px;
+            font-weight: 600;
+            padding: 14px;
+            width: 100%;
+            font-size: 15px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            -webkit-appearance: none;
+        }
+        .btn-primary:active { background: #374151; transform: scale(0.98); }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1.5px solid #e5e7eb;
+            color: #374151;
+            border-radius: 10px;
+            font-weight: 500;
+            padding: 9px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background 0.15s;
+        }
+        .btn-ghost:active { background: #f3f4f6; }
+
+        select {
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px !important;
+        }
+
+        .input-field {
+            width: 100%;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 11px;
+            padding: 12px 14px;
+            background: #fafafa;
+            color: #111827;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            -webkit-appearance: none;
+        }
+        .input-field:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+            background: #fff;
+        }
+
+        .usd-preview {
+            width: 100%;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 11px;
+            padding: 12px 14px;
+            background: #f3f4f6;
+            color: #374151;
+            font-weight: 600;
+            font-family: 'DM Mono', monospace;
+        }
+
+        /* Scrollbars hidden */
+        ::-webkit-scrollbar { display: none; }
+
+        /* Member avatar colors */
+        .avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+        .av0 { background: #dbeafe; color: #1d4ed8; }
+        .av1 { background: #dcfce7; color: #15803d; }
+        .av2 { background: #fce7f3; color: #be185d; }
+        .av3 { background: #fef3c7; color: #b45309; }
+        .av4 { background: #ede9fe; color: #7c3aed; }
+
+        /* Slide-in animation for new entries */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .new-entry { animation: slideIn 0.25s ease forwards; }
+
+        /* Loading spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
+
+        /* Safe area padding for iPhone home indicator */
+        .safe-bottom { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+    </style>
+</head>
+<body>
+
+<div style="max-width: 480px; margin: 0 auto;" class="px-4 pt-4 safe-bottom">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h1 style="font-size: 22px; font-weight: 700; color: #111827; line-height: 1.2;">Shared Bank Tracker</h1>
+            <div id="rate-badge" style="margin-top:4px; display:flex; align-items:center; gap:5px;">
+                <span class="live-dot" style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+                <span id="rate-text" style="font-size:11px; color:#6b7280; font-family:'DM Mono',monospace;">Fetching rate…</span>
+            </div>
+        </div>
+        <button onclick="downloadCSV()" class="btn-ghost">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            CSV
+        </button>
+    </div>
+
+    <!-- Balance Banner -->
+    <div class="card mb-4" style="background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%); color: white; padding: 16px 18px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <div style="font-size: 11px; opacity: 0.75; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em;">Fund Balance</div>
+            <div id="balance-banner" style="font-size: 28px; font-weight: 700; line-height: 1.15; font-family:'DM Mono',monospace;">$4,500</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-size: 11px; opacity: 0.75; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em;">Total Spent</div>
+            <div id="spent-banner" style="font-size: 20px; font-weight: 600; font-family:'DM Mono',monospace;">$0.00</div>
+            <div id="pct-banner" style="font-size: 11px; opacity: 0.7;">0% used</div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div style="position: relative; display: flex; border-bottom: 1.5px solid #e5e7eb; margin-bottom: 18px;">
+        <button onclick="switchTab('tracker')" id="tab-tracker" class="tab-btn active" style="flex:1; padding: 11px 0; font-size: 14px; font-weight: 600; color: #6b7280; background: none; border: none; cursor: pointer;">Tracker</button>
+        <button onclick="switchTab('settings')" id="tab-settings" class="tab-btn" style="flex:1; padding: 11px 0; font-size: 14px; font-weight: 600; color: #6b7280; background: none; border: none; cursor: pointer;">Settings</button>
+        <div class="tab-indicator" id="tab-indicator" style="left: 0; width: 50%;"></div>
+    </div>
+
+    <!-- ===== TRACKER VIEW ===== -->
+    <div id="view-tracker">
+
+        <!-- Member Summary Cards -->
+        <div id="summary-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;"></div>
+
+        <!-- Record Form -->
+        <div class="card mb-4" style="padding: 18px;">
+            <div style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 14px;">Record Withdrawal</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:600; color:#6b7280; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em;">Member</label>
+                    <select id="input-person" class="input-field"></select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; color:#6b7280; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em;">Amount ¥</label>
+                        <input type="number" inputmode="numeric" id="input-jpy" placeholder="e.g. 5000" class="input-field">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:11px; font-weight:600; color:#6b7280; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em;">≈ USD</label>
+                        <div class="usd-preview" id="calc-usd-display">$0.00</div>
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="submitEntry()">Add Entry</button>
+            </div>
+        </div>
+
+        <!-- Transactions -->
+        <div class="card mb-6" style="overflow: hidden; margin-top: 16px;">
+            <div style="padding: 14px 16px; border-bottom: 1px solid #f0f2f5; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 13px; font-weight: 700; color: #111827;">Recent Activity</span>
+                <span id="tx-count" style="font-size: 11px; color: #9ca3af; font-weight: 500;"></span>
+            </div>
+            <div id="transaction-list"></div>
+            <div id="empty-state" style="padding: 40px 16px; text-align: center; color: #9ca3af; font-size: 14px; display: none;">
+                No transactions yet. Add your first entry above.
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SETTINGS VIEW ===== -->
+    <div id="view-settings" style="display:none;">
+        <div class="card mb-4" style="padding: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div>
+                    <div style="font-size: 16px; font-weight: 700; color: #111827;">Members</div>
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">People sharing this account</div>
+                </div>
+                <button onclick="addMember()" style="background:#eff6ff; color:#1d4ed8; border:none; border-radius:10px; padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;">+ Add</button>
+            </div>
+            <div id="members-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+
+        <div style="background: #fff5f5; border-radius: 18px; padding: 18px; border: 1px solid #fee2e2;" class="mb-6">
+            <div style="font-size: 13px; font-weight: 700; color: #b91c1c; margin-bottom: 4px;">Danger Zone</div>
+            <div style="font-size: 12px; color: #ef4444; margin-bottom: 14px;">Permanently deletes all records stored on this device.</div>
+            <button onclick="clearAllData()" style="background: transparent; border: 1.5px solid #fca5a5; color: #b91c1c; border-radius: 10px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; -webkit-appearance: none;">Reset All App Data</button>
+        </div>
+    </div>
+
+</div>
+
+<!-- Custom confirm modal (replaces confirm() which is blocked in iOS PWA mode) -->
+<div id="confirm-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);align-items:flex-end;justify-content:center;">
+    <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 36px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,0.12);">
+        <div id="confirm-message" style="font-size:15px;font-weight:600;color:#111827;margin-bottom:6px;text-align:center;"></div>
+        <div id="confirm-sub" style="font-size:13px;color:#6b7280;margin-bottom:20px;text-align:center;"></div>
+        <button id="confirm-ok" style="width:100%;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px;">Confirm</button>
+        <button id="confirm-cancel" onclick="closeConfirm()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#f3f4f6;color:#374151;font-size:15px;font-weight:600;cursor:pointer;">Cancel</button>
+    </div>
+</div>
+
+<script>
+    // ─── CUSTOM CONFIRM (confirm() is blocked in iOS PWA standalone mode) ────────
+    function showConfirm(message, sub, okLabel, okStyle, onOk) {
+        const modal = document.getElementById('confirm-modal');
+        document.getElementById('confirm-message').textContent = message;
+        document.getElementById('confirm-sub').textContent = sub;
+        const okBtn = document.getElementById('confirm-ok');
+        okBtn.textContent = okLabel;
+        okBtn.style.background = okStyle === 'danger' ? '#dc2626' : '#111827';
+        okBtn.style.color = '#fff';
+        okBtn.onclick = () => { closeConfirm(); onOk(); };
+        modal.style.display = 'flex';
+    }
+    function closeConfirm() {
+        document.getElementById('confirm-modal').style.display = 'none';
+    }
+
+    const STARTING_BALANCE = 4500;
+    let transactions = JSON.parse(localStorage.getItem('shared_withdrawals') || '[]');
+    let members = JSON.parse(localStorage.getItem('shared_members') || '["Person A","Person B","Person C"]');
+    let jpyToUsdRate = parseFloat(localStorage.getItem('cached_rate') || '0.0067');
+    let rateIsLive = false;
+
+    // ─── LIVE RATE FETCH ────────────────────────────────────────────────────────
+    // Strategy: try multiple CORS-friendly endpoints in sequence.
+    // The app is opened as a local file, so we need endpoints that respond
+    // with permissive CORS headers (Access-Control-Allow-Origin: *).
+    const RATE_SOURCES = [
+        // Source 1: frankfurter.app — open, no key, CORS-friendly
+        async () => {
+            const r = await fetch('https://api.frankfurter.app/latest?from=JPY&to=USD', { signal: AbortSignal.timeout(5000) });
+            const d = await r.json();
+            return d.rates.USD; // rate is already JPY→USD
+        },
+        // Source 2: open.er-api.com — free tier, CORS-open
+        async () => {
+            const r = await fetch('https://open.er-api.com/v6/latest/JPY', { signal: AbortSignal.timeout(5000) });
+            const d = await r.json();
+            return d.rates.USD;
+        },
+        // Source 3: exchangerate.host (no key needed, CORS*)
+        async () => {
+            const r = await fetch('https://api.exchangerate.host/latest?base=JPY&symbols=USD', { signal: AbortSignal.timeout(5000) });
+            const d = await r.json();
+            return d.rates.USD;
+        },
+    ];
+
+    async function fetchRate() {
+        setRateBadge('fetching');
+        for (const source of RATE_SOURCES) {
+            try {
+                const rate = await source();
+                if (rate && rate > 0) {
+                    jpyToUsdRate = rate;
+                    rateIsLive = true;
+                    localStorage.setItem('cached_rate', rate.toString());
+                    setRateBadge('live');
+                    updateLivePreview();
+                    return;
+                }
+            } catch (_) { /* try next */ }
+        }
+        // All sources failed — use cached/default
+        setRateBadge('cached');
+    }
+
+    function setRateBadge(state) {
+        const dot = document.querySelector('.live-dot');
+        const text = document.getElementById('rate-text');
+        const rateStr = `1 JPY = ${jpyToUsdRate.toFixed(6)} USD`;
+        if (state === 'fetching') {
+            dot.style.background = '#f59e0b';
+            text.textContent = 'Fetching rate…';
+        } else if (state === 'live') {
+            dot.style.background = '#10b981';
+            text.textContent = `Live · ${rateStr}`;
+        } else {
+            dot.style.background = '#9ca3af';
+            text.textContent = `Cached · ${rateStr}`;
+        }
+    }
+
+    // ─── TAB SWITCHING ──────────────────────────────────────────────────────────
+    function switchTab(tab) {
+        document.getElementById('view-tracker').style.display = tab === 'tracker' ? 'block' : 'none';
+        document.getElementById('view-settings').style.display = tab === 'settings' ? 'block' : 'none';
+        document.getElementById('tab-tracker').classList.toggle('active', tab === 'tracker');
+        document.getElementById('tab-settings').classList.toggle('active', tab === 'settings');
+        document.getElementById('tab-indicator').style.left = tab === 'tracker' ? '0' : '50%';
+        if (tab === 'settings') renderSettings();
+        else render();
+    }
+
+    // ─── AVATAR ─────────────────────────────────────────────────────────────────
+    function avatarClass(index) {
+        return `av${index % 5}`;
+    }
+    function initials(name) {
+        return name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    }
+
+    // ─── RENDER ─────────────────────────────────────────────────────────────────
+    function render() {
+        // Populate member select
+        const sel = document.getElementById('input-person');
+        const prev = sel.value;
+        sel.innerHTML = members.map(m => `<option value="${m}">${m}</option>`).join('');
+        if (members.includes(prev)) sel.value = prev;
+
+        // Compute totals
+        let runningSpent = 0;
+        const totals = {};
+        members.forEach(m => totals[m] = { usd: 0, jpy: 0 });
+
+        const processed = transactions.map((tx, index) => {
+            const usdValue = tx.jpy * tx.rate;
+            runningSpent += usdValue;
+            const balance = STARTING_BALANCE - runningSpent;
+            if (totals[tx.person] !== undefined) {
+                totals[tx.person].usd += usdValue;
+                totals[tx.person].jpy += tx.jpy;
+            }
+            return { ...tx, usdValue, balance, index };
+        });
+
+        const finalBalance = STARTING_BALANCE - runningSpent;
+        const pct = Math.min(100, ((runningSpent / STARTING_BALANCE) * 100)).toFixed(0);
+
+        // Update banner
+        document.getElementById('balance-banner').textContent = `$${finalBalance.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})}`;
+        document.getElementById('spent-banner').textContent = `$${runningSpent.toFixed(2)}`;
+        document.getElementById('pct-banner').textContent = `${pct}% used`;
+
+        // Summary cards
+        const summaryEl = document.getElementById('summary-container');
+        summaryEl.innerHTML = '';
+        members.forEach((m, i) => {
+            const card = document.createElement('div');
+            card.className = 'summary-card';
+            card.innerHTML = `
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <div class="avatar ${avatarClass(i)}">${initials(m)}</div>
+                    <span style="font-size:12px;font-weight:600;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m}</span>
+                </div>
+                <div style="font-size:17px;font-weight:700;color:#111827;font-family:'DM Mono',monospace;">$${totals[m].usd.toFixed(2)}</div>
+                <div style="font-size:11px;color:#9ca3af;font-family:'DM Mono',monospace;">¥${totals[m].jpy.toLocaleString()}</div>
+            `;
+            summaryEl.appendChild(card);
+        });
+
+        // Transaction list (mobile card style)
+        const listEl = document.getElementById('transaction-list');
+        const emptyEl = document.getElementById('empty-state');
+        const countEl = document.getElementById('tx-count');
+
+        if (processed.length === 0) {
+            listEl.innerHTML = '';
+            emptyEl.style.display = 'block';
+            countEl.textContent = '';
+        } else {
+            emptyEl.style.display = 'none';
+            countEl.textContent = `${processed.length} entries`;
+            listEl.innerHTML = '';
+            [...processed].reverse().forEach((tx, visIndex) => {
+                const memberIndex = members.indexOf(tx.person);
+                const div = document.createElement('div');
+                div.className = 'tx-card' + (visIndex === 0 ? ' new-entry' : '');
+                const dateStr = new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                div.innerHTML = `
+                    <div class="avatar ${avatarClass(memberIndex >= 0 ? memberIndex : 0)}">${initials(tx.person)}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+                            <span style="font-size:14px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${tx.person}</span>
+                            <span style="font-size:15px;font-weight:700;color:#111827;font-family:'DM Mono',monospace;white-space:nowrap;">$${tx.usdValue.toFixed(2)}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-top:2px;">
+                            <span style="font-size:11px;color:#9ca3af;">${dateStr} · ¥${tx.jpy.toLocaleString()}</span>
+                            <span style="font-size:11px;color:#10b981;font-weight:500;white-space:nowrap;">$${tx.balance.toFixed(0)} left</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteEntry(${tx.index})" style="padding:8px;color:#d1d5db;background:none;border:none;cursor:pointer;flex-shrink:0;">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                `;
+                listEl.appendChild(div);
+            });
+        }
+
+        localStorage.setItem('shared_withdrawals', JSON.stringify(transactions));
+        localStorage.setItem('shared_members', JSON.stringify(members));
+    }
+
+    // ─── SETTINGS RENDER ────────────────────────────────────────────────────────
+    function renderSettings() {
+        const list = document.getElementById('members-list');
+        list.innerHTML = members.map((name, i) => `
+            <div style="display:flex;gap:8px;align-items:center;">
+                <div class="avatar av${i % 5}" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">${name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+                <input type="text" id="member-input-${i}" value="${name}"
+                    class="input-field" style="flex:1;"
+                    onkeydown="if(event.key==='Enter'){saveMemberName(${i});this.blur();}" />
+                <button onclick="saveMemberName(${i})" style="background:#eff6ff;border:none;cursor:pointer;padding:8px 10px;color:#1d4ed8;flex-shrink:0;border-radius:8px;font-size:12px;font-weight:600;">
+                    Save
+                </button>
+                <button onclick="removeMember(${i})" style="background:none;border:none;cursor:pointer;padding:8px;color:#ef4444;flex-shrink:0;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+            </div>
+        `).join('');
+    }
+
+    // ─── ACTIONS ─────────────────────────────────────────────────────────────────
+    function updateLivePreview() {
+        const jpy = parseFloat(document.getElementById('input-jpy').value) || 0;
+        const usd = jpy * jpyToUsdRate;
+        document.getElementById('calc-usd-display').textContent = `$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    document.getElementById('input-jpy').addEventListener('input', updateLivePreview);
+
+    function submitEntry() {
+        const person = document.getElementById('input-person').value;
+        const jpy = parseFloat(document.getElementById('input-jpy').value);
+        if (!person || !(jpy > 0)) return;
+        transactions.push({ person, jpy, rate: jpyToUsdRate, date: new Date().toISOString() });
+        document.getElementById('input-jpy').value = '';
+        updateLivePreview();
+        render();
+    }
+
+    window.deleteEntry = (index) => {
+        showConfirm('Delete this entry?', '', 'Delete', 'danger', () => {
+            transactions.splice(index, 1);
+            render();
+        });
+    };
+
+    function addMember() {
+        members.push(`Person ${members.length + 1}`);
+        renderSettings();
+        localStorage.setItem('shared_members', JSON.stringify(members));
+    }
+
+    window.removeMember = (index) => {
+        if (members.length <= 1) return;
+        showConfirm('Remove this member?', 'Their transactions will remain in history.', 'Remove', 'danger', () => {
+            members.splice(index, 1);
+            renderSettings();
+            localStorage.setItem('shared_members', JSON.stringify(members));
+        });
+    };
+
+    window.saveMemberName = (index) => {
+        const input = document.getElementById('member-input-' + index);
+        if (!input) return;
+        const newName = input.value.trim();
+        if (!newName) return;
+        const oldName = members[index];
+        members[index] = newName;
+        // Update all existing transactions that used the old name
+        transactions.forEach(tx => { if (tx.person === oldName) tx.person = newName; });
+        localStorage.setItem('shared_members', JSON.stringify(members));
+        localStorage.setItem('shared_withdrawals', JSON.stringify(transactions));
+        // Flash the save button green to confirm
+        const btn = input.nextElementSibling;
+        btn.textContent = '✓';
+        btn.style.background = '#dcfce7';
+        btn.style.color = '#15803d';
+        setTimeout(() => { btn.textContent = 'Save'; btn.style.background = '#eff6ff'; btn.style.color = '#1d4ed8'; }, 1200);
+        // Re-render tracker so transaction list and summary cards show new name
+        render();
+    };
+
+    window.clearAllData = () => {
+        showConfirm('Reset everything?', 'This permanently deletes all records and cannot be undone.', 'Reset All Data', 'danger', () => {
+            transactions = [];
+            members = ['Person A', 'Person B', 'Person C'];
+            localStorage.clear();
+            closeConfirm();
+            switchTab('tracker');
+        });
+    };
+
+    window.downloadCSV = () => {
+        if (!transactions.length) { alert('No transactions to export.'); return; }
+        let csv = 'Date,Member,Amount JPY,Rate,Amount USD\n';
+        transactions.forEach(tx => {
+            csv += `${new Date(tx.date).toLocaleDateString()},${tx.person},${tx.jpy},${tx.rate.toFixed(6)},${(tx.jpy * tx.rate).toFixed(2)}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `budget_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // ─── INIT ───────────────────────────────────────────────────────────────────
+    render();
+    fetchRate();
+    // Re-fetch every 15 minutes
+    setInterval(fetchRate, 15 * 60 * 1000);
+
+    // ─── SERVICE WORKER REGISTRATION ────────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('SW registered — app is offline-ready'))
+                .catch(err => console.warn('SW registration failed:', err));
+        });
+    }
+</script>
+</body>
+</html>
